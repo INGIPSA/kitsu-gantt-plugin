@@ -1,0 +1,13 @@
+{
+  "name": "kitsu-gantt-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend for the Kitsu Gantt plugin. MVP: standalone index.html in dist/ loads frappe-gantt from CDN. Future: full Vue build like the Whiteboard plugin.",
+  "scripts": {
+    "build": "echo 'MVP uses a single-file dist/index.html — no build step needed yet'"
+  },
+  "dependencies": {
+    "frappe-gantt": "^1.0.3"
+  }
+}

@@ -1,0 +1,12 @@
+id = "gantt"
+name = "Gantt"
+description = "Production Gantt chart — visualise task dates, dependencies, milestones and schedule snapshots."
+version = "0.1.0"
+maintainer = "INGIPSA <pb@kariana.ai>"
+website = "github.com/INGIPSA/kitsu-gantt-plugin"
+license = "AGPL-3.0-only"
+icon = "bar-chart-3"
+frontend_project_enabled = true
+frontend_studio_enabled = false
+maintainer_name = "INGIPSA"
+maintainer_email = "pb@kariana.ai"
