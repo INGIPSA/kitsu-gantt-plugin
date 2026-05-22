@@ -205,6 +205,19 @@
     }
     /* The orange dot under today */
     .gantt-container .current-ball { background-color: var(--fg-dim) !important; }
+    /* Date-range highlight (frappe-gantt overlays this over the header dates
+       when a bar is hovered to mark its span). Default is grey-on-grey →
+       invisible. Invert it: dark pill + light text, themed. */
+    .gantt-container .date-range-highlight {
+      background-color: var(--fg) !important;
+      color: var(--bg) !important;
+      border-radius: 9999px;
+      opacity: 0.92;
+    }
+    .gantt-container .date-range-highlight + .upper-text,
+    .gantt-container .date-range-highlight ~ .lower-text {
+      color: var(--bg) !important;
+    }
     /* Frappe-gantt's native "Today" button (sticky bottom-right of the header).
        Default it ships with a light-grey bg that clashes with both themes. */
     .gantt-container .today-button,
@@ -235,6 +248,19 @@
     .gantt text { fill: var(--fg); }
     .gantt .lower-text, .gantt .upper-text { opacity: 0.75; }
     .gantt .arrow { stroke: var(--fg-dim); }
+    /* Drag handles — frappe-gantt's default is 3px wide and opacity 0 (only
+       visible on hover via a JS class swap). Make them noticeably grabbable. */
+    .gantt .handle-group .handle {
+      width: 6px !important;
+      opacity: 0.35;
+      transition: opacity 0.12s ease;
+      cursor: ew-resize;
+    }
+    .gantt .bar-wrapper:hover .handle-group .handle { opacity: 0.9; }
+    .gantt .handle-group .handle.progress { cursor: pointer; }
+    /* Expand the actual hit area beyond the visible handle so it's easier
+       to grab — add an invisible 12px pad. */
+    .gantt .bar-wrapper { cursor: pointer; }
     /* Milestone line drawn inside the SVG so it scrolls with the chart and
        spans the full chart height naturally. Pastel pink, dotted, behind bars. */
     .gantt-milestone-group { opacity: 0.85; }
@@ -561,10 +587,10 @@
         const pastel = lighten(color, 0.7);
         const style = document.createElement("style");
         // Bar fill = saturated status colour. Pastel echo applied on the .bar
-        // rect ONLY — applying the drop-shadow on the wrapper bled onto the
-        // outside-bar text label and made it look like a pill background.
+        // rect ONLY (the drop-shadow on the wrapper bled onto text labels).
+        // No stroke — Piotr noted the outline ring looked weird.
         style.textContent =
-          `.gantt .bar-wrapper.${cls} .bar { fill: ${color}; stroke: ${color}; filter: drop-shadow(0 2px 0 ${pastel}); }`;
+          `.gantt .bar-wrapper.${cls} .bar { fill: ${color}; stroke: none; filter: drop-shadow(0 2px 0 ${pastel}); }`;
         document.head.appendChild(style);
       });
 
@@ -588,10 +614,11 @@
         const row = document.createElement("div");
         row.className = "name-col-row";
         row.textContent = t.name;
-        row.title = "Open task in Kitsu";
+        row.title = "Double-click to open in Kitsu";
         row.dataset.taskId = t.id;
         row.dataset.entityId = t._entity_id || "";
-        row.addEventListener("click", () => openTask(t.id, t._entity_id));
+        // Match the chart behaviour: double-click opens, single click is a no-op.
+        row.addEventListener("dblclick", () => openTask(t.id, t._entity_id));
         nameList.appendChild(row);
       });
 
@@ -617,7 +644,10 @@
           // Suppress frappe-gantt's default popup; we open the task in the parent app instead.
           return null;
         },
-        on_click: function (task) {
+        // Single click is too eager — it fires even when the user grabs the
+        // edge to resize. Use double-click to open the task.
+        on_click: function (task) { /* intentionally no-op */ },
+        on_double_click: function (task) {
           openTask(task.id, task._entity_id);
         },
       });
