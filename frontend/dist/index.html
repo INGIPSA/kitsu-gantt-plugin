@@ -131,7 +131,7 @@
       overflow: hidden; /* synced from chart-col, no own scrollbar */
     }
     .name-col-row {
-      height: 28px;
+      height: 26px;
       padding: 0 12px;
       display: flex;
       align-items: center;
@@ -205,6 +205,23 @@
     }
     /* The orange dot under today */
     .gantt-container .current-ball { background-color: var(--fg-dim) !important; }
+    /* Frappe-gantt's native "Today" button (sticky bottom-right of the header).
+       Default it ships with a light-grey bg that clashes with both themes. */
+    .gantt-container .today-button,
+    .gantt-container .side-header .today-button {
+      background-color: var(--btn-bg) !important;
+      color: var(--fg) !important;
+      border: 1px solid var(--btn-border) !important;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .gantt-container .today-button:hover { background-color: var(--btn-bg-hover) !important; }
+    /* The .side-header container itself can also have a white background */
+    .gantt-container .side-header {
+      background-color: transparent !important;
+    }
     /* SVG body */
     .gantt .grid-header,
     .gantt .grid-row,
@@ -543,13 +560,11 @@
         const color = r.task_status_color || "#64748b";
         const pastel = lighten(color, 0.7);
         const style = document.createElement("style");
+        // Bar fill = saturated status colour. Pastel echo applied on the .bar
+        // rect ONLY — applying the drop-shadow on the wrapper bled onto the
+        // outside-bar text label and made it look like a pill background.
         style.textContent =
-          `.gantt .bar-wrapper.${cls} .bar { fill: ${color}; stroke: ${color}; }\n` +
-          // "big" wrappers have the label sitting OUTSIDE the bar — render that label dim,
-          // because the page background under it is light/dark theme bg, not the bar fill.
-          `.gantt .bar-wrapper.${cls}.big .bar-label { fill: var(--fg) !important; opacity: 0.85; }\n` +
-          // Soft pastel shadow (3px offset) BEHIND the bar to suggest "pastel echo"
-          `.gantt .bar-wrapper.${cls} { filter: drop-shadow(0 2px 0 ${pastel}); }`;
+          `.gantt .bar-wrapper.${cls} .bar { fill: ${color}; stroke: ${color}; filter: drop-shadow(0 2px 0 ${pastel}); }`;
         document.head.appendChild(style);
       });
 
@@ -588,11 +603,12 @@
       gantt = new Gantt(mountSvg, combined, {
         view_mode: currentMode,
         date_format: "YYYY-MM-DD",
-        // Row geometry — 25% lower than v0.1.7 (bar 22→16, padding 16→12, row 38→28)
-        // so cells are closer to square at Day view (column_width 32 vs row 28).
-        bar_height: 16,
+        // Row geometry: thick pill + minimal vertical margin.
+        // bar 22 + padding 4 = row 26 (was 16+12=28). Pills feel chunkier, the
+        // gap between rows is just a hair.
+        bar_height: 22,
         bar_corner_radius: 4,
-        padding: 12,
+        padding: 4,
         column_width: currentMode === "Month" ? 80 : currentMode === "Week" ? 56 : currentMode === "Day" ? 32 : 24,
         view_mode_padding: { "Quarter Day": "1d", "Half Day": "1d", "Day": "1d", "Week": "3d", "Month": "1w" },
         infinite_padding: false,
@@ -638,6 +654,8 @@
           mountSvg.style.minWidth = explicit + "px";
         }
         const wrappers = Array.from(mountSvg.querySelectorAll(".bar-wrapper"));
+        // Pull the body fg colour once so SVG text inherits the page foreground
+        const themeFg = getComputedStyle(document.body).color;
         wrappers.forEach((wrap, idx) => {
           const row = rows[idx];
           if (!row) return;
@@ -645,13 +663,23 @@
           // Threshold 0.85 — only the very-light statuses (Todo #f5f5f5, Neutral #cccccc)
           // get a dark label. Green/blue/purple/red all stay white-on-saturated.
           const labelDark = luma > 0.85;
-          // Labels INSIDE the bar (small/normal wrappers) — colour by bar luma
-          if (!wrap.classList.contains("big")) {
-            wrap.querySelectorAll(".bar-label").forEach((el) => {
-              el.style.fill = labelDark ? "#111418" : "#ffffff";
+          // Frappe-gantt 1.0.3 puts the `.big` class on the <text> element ITSELF
+          // (not on the wrapper) when the label overflows the bar and is rendered
+          // beside the bar instead of inside it. Detect per-element.
+          wrap.querySelectorAll(".bar-label").forEach((el) => {
+            const outside = el.classList.contains("big");
+            if (outside) {
+              // Label sits on the page background, NOT on the bar fill — always
+              // use the theme foreground so it's readable in both light and dark.
+              el.style.fill = themeFg;
+              el.style.opacity = "0.95";
               el.style.fontWeight = "600";
-            });
-          }
+            } else {
+              el.style.fill = labelDark ? "#111418" : "#ffffff";
+              el.style.opacity = "1";
+              el.style.fontWeight = "600";
+            }
+          });
           // bar-progress fill — dim on light bars, light on dark bars
           if (labelDark) {
             wrap.querySelectorAll(".bar-progress").forEach((el) => {
