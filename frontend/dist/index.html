@@ -48,11 +48,48 @@
     }
     .toolbar .spacer { flex: 1; }
     .toolbar .status { font-size: 12px; opacity: 0.6; }
-    #gantt-container {
+    .chart-wrap {
+      display: flex;
       width: 100%;
-      overflow: auto;
-      padding: 8px 0;
+      height: calc(100vh - 60px);
+      overflow: hidden;
     }
+    .name-col {
+      flex: 0 0 220px;
+      overflow-y: hidden;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      background: #0f1115;
+    }
+    .name-col-header {
+      height: 60px;
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      opacity: 0.6;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      align-items: flex-end;
+    }
+    .name-col-list {
+      overflow-y: auto;
+      max-height: calc(100vh - 120px);
+    }
+    .name-col-row {
+      height: 38px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      font-size: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .name-col-row.milestone { color: #fca5a5; font-weight: 600; }
+    .chart-col { flex: 1; overflow: auto; }
+    #gantt-container { padding: 0; }
     #empty {
       padding: 32px;
       text-align: center;
@@ -95,8 +132,16 @@
     <div class="spacer"></div>
     <div class="status" id="status">Loading…</div>
   </div>
-  <svg id="gantt-container"></svg>
-  <div id="empty" hidden>No dated tasks in this project yet. Add <code>start_date</code> and <code>due_date</code> on tasks to see them here.</div>
+  <div class="chart-wrap">
+    <div class="name-col">
+      <div class="name-col-header">Task</div>
+      <div class="name-col-list" id="name-list"></div>
+    </div>
+    <div class="chart-col" id="chart-col">
+      <svg id="gantt-container"></svg>
+      <div id="empty" hidden>No dated tasks in this project yet. Add <code>start_date</code> and <code>due_date</code> on tasks to see them here.</div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@1.0.3/dist/frappe-gantt.umd.js"></script>
   <script>
@@ -145,7 +190,8 @@
         document.querySelectorAll("#view-mode button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         currentMode = btn.dataset.mode;
-        if (gantt) gantt.change_view_mode(currentMode);
+        // Reload so column_width and view_mode_padding take effect (change_view_mode keeps the old layout).
+        load();
       });
     });
 
@@ -226,6 +272,17 @@
       });
 
       container.innerHTML = "";
+      // Render side-panel rows in the same order frappe-gantt will draw them.
+      const nameList = document.getElementById("name-list");
+      nameList.innerHTML = "";
+      combined.forEach((t) => {
+        const row = document.createElement("div");
+        row.className = "name-col-row" + (t.custom_class === "milestone" ? " milestone" : "");
+        row.textContent = t.name;
+        row.title = t.name;
+        nameList.appendChild(row);
+      });
+
       if (!combined.length) {
         empty.hidden = false;
         gantt = null;
@@ -237,7 +294,21 @@
         bar_height: 22,
         bar_corner_radius: 4,
         padding: 16,
+        column_width: currentMode === "Month" ? 80 : currentMode === "Week" ? 56 : currentMode === "Day" ? 32 : 24,
+        view_mode_padding: { "Quarter Day": "1d", "Half Day": "1d", "Day": "1d", "Week": "3d", "Month": "1w" },
+        infinite_padding: false,
+        readonly: true,
       });
+      // Sync the name-col scroll with the chart's vertical scroll.
+      const chartCol = document.getElementById("chart-col");
+      chartCol.scrollLeft = 0;
+      chartCol.addEventListener(
+        "scroll",
+        () => {
+          nameList.scrollTop = chartCol.scrollTop;
+        },
+        { passive: true }
+      );
     }
   </script>
 </body>
