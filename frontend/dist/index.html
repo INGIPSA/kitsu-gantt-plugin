@@ -97,25 +97,61 @@
       font-size: 13px;
     }
     /* Override frappe-gantt for dark mode — graph paper / krateczki look */
-    .gantt .grid-header { fill: #14171d; }
-    /* All rows the same flat base — alternating shades cause too much contrast */
+    /* Frappe-gantt 1.0.3 renders the header as an HTML <div>, not SVG */
+    .gantt-container, .gantt-container .grid-header {
+      background-color: #11141a !important;
+      color: #e5e7eb;
+    }
+    .gantt-container .upper-header, .gantt-container .lower-header {
+      color: #e5e7eb;
+      background-color: transparent !important;
+    }
+    .gantt-container .upper-text, .gantt-container .lower-text {
+      color: rgba(229, 231, 235, 0.75) !important;
+    }
+    .gantt-container .current-upper, .gantt-container .current-ball-highlight {
+      background-color: #f59e0b !important;
+      color: #11141a !important;
+    }
+    /* SVG body — flat rows, subtle ticks */
+    .gantt .grid-header,
     .gantt .grid-row,
     .gantt .grid-row:nth-child(even) { fill: #11141a; }
-    /* Subtle vertical grid lines = graph paper */
     .gantt .tick { stroke: rgba(255, 255, 255, 0.05); stroke-width: 1; }
     .gantt .tick.thick { stroke: rgba(255, 255, 255, 0.1); }
     .gantt .row-line { stroke: rgba(255, 255, 255, 0.04); }
-    /* Weekends — barely-there dim, NOT bright white as frappe-gantt defaults to */
     .gantt .holiday-highlight { fill: rgba(255, 255, 255, 0.025) !important; }
-    .gantt .today-highlight { fill: #f59e0b; opacity: 0.12; }
+    .gantt .today-highlight { fill: #f59e0b; opacity: 0.18; }
     .gantt .bar-progress { fill: rgba(255, 255, 255, 0.22); }
-    .gantt text { fill: #e5e7eb !important; }
-    .gantt .lower-text, .gantt .upper-text { opacity: 0.7; }
+    .gantt text { fill: #e5e7eb; }
+    .gantt .lower-text, .gantt .upper-text { opacity: 0.75; }
     .gantt .arrow { stroke: #94a3b8; }
-    /* Milestones rendered as 1-day bars with a distinctive style */
-    .gantt .bar-wrapper.milestone .bar { fill: #ef4444; stroke: #b91c1c; stroke-width: 1.5; }
-    .gantt .bar-wrapper.milestone .bar-label { fill: #fef2f2 !important; font-weight: 600; }
-    .gantt .bar-wrapper.milestone .bar-progress { fill: transparent; }
+    /* Per-bar label colour is set inline based on bg luma — see js below */
+    /* Milestone overlay (vertical red line across the chart) */
+    .milestone-overlay {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #ef4444;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .milestone-overlay::before {
+      content: "🚩 " attr(data-name);
+      position: absolute;
+      top: 4px;
+      left: 6px;
+      white-space: nowrap;
+      background: rgba(239, 68, 68, 0.95);
+      color: #fef2f2;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      pointer-events: auto;
+    }
+    .chart-col { position: relative; }
   </style>
 </head>
 <body>
@@ -182,6 +218,7 @@
     let currentMode = "Day";
     let currentSource = "tasks";
     let showMilestones = true;
+    let currentMilestones = [];
 
     if (!projectId) {
       status.textContent = "Missing project_id";
@@ -230,6 +267,7 @@
                 .catch(() => [])
             : Promise.resolve([]),
         ]);
+        currentMilestones = milestones;
         renderGantt(rows, milestones);
         const ms = milestones.length;
         status.textContent = `${rows.length} item${rows.length === 1 ? "" : "s"}` + (ms ? `  ·  ${ms} milestone${ms === 1 ? "" : "s"}` : "");
@@ -240,7 +278,28 @@
       }
     }
 
+    // Compute relative luminance (WCAG) for an arbitrary hex / rgb color so
+    // we can pick a readable label colour on bars whose status colour is
+    // close to either extreme (TATO has Todo = #f5f5f5 which is near-white).
+    function lumaFromHex(hex) {
+      if (!hex) return 1;
+      let m = hex.match(/^#?([0-9a-f]{6})$/i);
+      if (!m) {
+        const rgb = hex.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+        if (!rgb) return 1;
+        const [r, g, b] = [+rgb[1], +rgb[2], +rgb[3]];
+        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+      }
+      const h = m[1];
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+    }
+
     function renderGantt(rows, milestones = []) {
+      // Milestones are rendered as OVERLAY vertical lines (see addMilestoneOverlays
+      // below), NOT as bars in the rows. Cleaner and matches the today marker.
       const tasks = rows
         .filter((r) => r.start && r.end)
         .map((r) => ({
@@ -250,20 +309,9 @@
           end: r.end.slice(0, 10),
           progress: r.progress ?? 0,
           custom_class: `status-${(r.task_status_short_name || "").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+          _color: r.task_status_color,
         }));
-      // Milestones rendered as single-day bars at the top of the chart
-      const msTasks = milestones
-        .filter((m) => m.date)
-        .map((m) => ({
-          id: `ms-${m.id}`,
-          name: `🚩 ${m.name}` + (m.task_type_name ? `  ·  ${m.task_type_name}` : ""),
-          start: m.date.slice(0, 10),
-          end: m.date.slice(0, 10),
-          progress: 100,
-          custom_class: "milestone",
-        }));
-      // Sort milestones first so they sit at the top
-      const combined = msTasks.concat(tasks);
+      const combined = tasks;
 
       // Inject one CSS rule per distinct task_status_color so bars are coloured.
       const seen = new Set();
@@ -315,6 +363,54 @@
         },
         { passive: true }
       );
+
+      // After frappe-gantt mounts, walk each bar and:
+      //  - flip the label colour to dark when the bar fill is light
+      //    (TATO's "Todo" status is #f5f5f5 — would be invisible)
+      requestAnimationFrame(() => {
+        rows.forEach((r) => {
+          const cls = `status-${(r.task_status_short_name || "").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+          const wrap = container.querySelector(`.bar-wrapper.${cls}`);
+          if (!wrap) return;
+          const luma = lumaFromHex(r.task_status_color);
+          const labelDark = luma > 0.6;
+          wrap.querySelectorAll(".bar-label").forEach((el) => {
+            el.style.fill = labelDark ? "#111418" : "#ffffff";
+            el.style.fontWeight = "600";
+          });
+          // Reduce progress fill contrast on light bars
+          if (labelDark) {
+            wrap.querySelectorAll(".bar-progress").forEach((el) => {
+              el.style.fill = "rgba(0, 0, 0, 0.18)";
+            });
+          }
+        });
+
+        // Vertical milestone overlays — span full chart height, like today marker
+        chartCol.querySelectorAll(".milestone-overlay").forEach((el) => el.remove());
+        if (showMilestones && currentMilestones.length) {
+          // Map dates to pixel x using frappe-gantt's internal x-scale via the bars themselves.
+          const sampleBar = container.querySelector(".bar-wrapper .bar");
+          const ganttStart = gantt && gantt.gantt_start ? gantt.gantt_start : null;
+          const colW = gantt && gantt.config && gantt.config.column_width ? gantt.config.column_width : 30;
+          const unit = gantt && gantt.config && gantt.config.step ? gantt.config.step : 24;
+          const dayWidth = colW * (24 / unit);
+          if (ganttStart && sampleBar) {
+            const svgRect = container.getBoundingClientRect();
+            currentMilestones.forEach((m) => {
+              if (!m.date) return;
+              const d = new Date(m.date + "T00:00:00");
+              const diffDays = (d - ganttStart) / 86400000;
+              const x = diffDays * dayWidth;
+              const overlay = document.createElement("div");
+              overlay.className = "milestone-overlay";
+              overlay.style.left = x + "px";
+              overlay.setAttribute("data-name", m.name);
+              chartCol.appendChild(overlay);
+            });
+          }
+        }
+      });
     }
   </script>
 </body>
