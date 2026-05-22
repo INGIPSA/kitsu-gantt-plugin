@@ -96,15 +96,21 @@
       opacity: 0.6;
       font-size: 13px;
     }
-    /* Override frappe-gantt for dark mode */
-    .gantt .grid-header { fill: #1a1d24; }
-    .gantt .grid-row { fill: #11141a; }
-    .gantt .grid-row:nth-child(even) { fill: #0f1115; }
-    .gantt .row-line { stroke: #232733; }
-    .gantt .tick { stroke: #232733; }
-    .gantt .today-highlight { fill: #f59e0b; opacity: 0.15; }
-    .gantt .bar-progress { fill: rgba(255, 255, 255, 0.25); }
+    /* Override frappe-gantt for dark mode — graph paper / krateczki look */
+    .gantt .grid-header { fill: #14171d; }
+    /* All rows the same flat base — alternating shades cause too much contrast */
+    .gantt .grid-row,
+    .gantt .grid-row:nth-child(even) { fill: #11141a; }
+    /* Subtle vertical grid lines = graph paper */
+    .gantt .tick { stroke: rgba(255, 255, 255, 0.05); stroke-width: 1; }
+    .gantt .tick.thick { stroke: rgba(255, 255, 255, 0.1); }
+    .gantt .row-line { stroke: rgba(255, 255, 255, 0.04); }
+    /* Weekends — barely-there dim, NOT bright white as frappe-gantt defaults to */
+    .gantt .holiday-highlight { fill: rgba(255, 255, 255, 0.025) !important; }
+    .gantt .today-highlight { fill: #f59e0b; opacity: 0.12; }
+    .gantt .bar-progress { fill: rgba(255, 255, 255, 0.22); }
     .gantt text { fill: #e5e7eb !important; }
+    .gantt .lower-text, .gantt .upper-text { opacity: 0.7; }
     .gantt .arrow { stroke: #94a3b8; }
     /* Milestones rendered as 1-day bars with a distinctive style */
     .gantt .bar-wrapper.milestone .bar { fill: #ef4444; stroke: #b91c1c; stroke-width: 1.5; }
