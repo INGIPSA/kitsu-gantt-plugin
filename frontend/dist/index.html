@@ -20,8 +20,8 @@
       --tick-thick:        rgba(255, 255, 255, 0.20);
       --weekend-tint:      rgba(255, 255, 255, 0.04);
       --today-fill:        #f59e0b;
-      --milestone-fill:    #ef4444;
-      --milestone-text:    #fef2f2;
+      --milestone-fill:    #fda4af;
+      --milestone-text:    #fff1f2;
       --progress-fill:     rgba(255, 255, 255, 0.22);
       --btn-bg:            rgba(255, 255, 255, 0.06);
       --btn-bg-hover:      rgba(255, 255, 255, 0.12);
@@ -39,8 +39,8 @@
       --tick-thick:        rgba(15, 23, 42, 0.22);
       --weekend-tint:      rgba(15, 23, 42, 0.05);
       --today-fill:        #f59e0b;
-      --milestone-fill:    #ef4444;
-      --milestone-text:    #ffffff;
+      --milestone-fill:    #f9a8d4;
+      --milestone-text:    #831843;
       --progress-fill:     rgba(0, 0, 0, 0.18);
       --btn-bg:            rgba(15, 23, 42, 0.05);
       --btn-bg-hover:      rgba(15, 23, 42, 0.10);
@@ -83,6 +83,18 @@
     .toolbar button:hover {
       background: var(--btn-bg-hover);
     }
+    .toolbar select {
+      background: var(--btn-bg);
+      border: 1px solid var(--btn-border);
+      color: var(--fg);
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      max-width: 200px;
+    }
+    .toolbar select:hover { background: var(--btn-bg-hover); }
+    .toolbar label { font-size: 11px; color: var(--fg-dim); margin-right: 4px; }
     .toolbar .spacer { flex: 1; }
     .toolbar .status { font-size: 12px; color: var(--fg-dim); }
     html, body { height: 100%; overflow: hidden; }
@@ -119,7 +131,7 @@
       overflow: hidden; /* synced from chart-col, no own scrollbar */
     }
     .name-col-row {
-      height: 38px;
+      height: 28px;
       padding: 0 12px;
       display: flex;
       align-items: center;
@@ -129,7 +141,10 @@
       overflow: hidden;
       text-overflow: ellipsis;
       box-sizing: border-box;
+      cursor: pointer;
+      transition: background-color 0.12s ease;
     }
+    .name-col-row:hover { background-color: var(--btn-bg); }
     .chart-col {
       flex: 1;
       overflow: auto;
@@ -176,10 +191,20 @@
     .gantt-container .upper-text, .gantt-container .lower-text {
       color: var(--fg-dim) !important;
     }
-    .gantt-container .current-upper, .gantt-container .current-ball-highlight {
-      background-color: var(--today-fill) !important;
-      color: var(--bg) !important;
+    /* Make the current month (orange tag on "May") look like any other month
+       label, and invert today's date pill — dark bg + white text. */
+    .gantt-container .current-upper {
+      background-color: transparent !important;
+      color: var(--fg) !important;
+      font-weight: 600;
     }
+    .gantt-container .current-ball-highlight {
+      background-color: var(--fg) !important;
+      color: var(--bg) !important;
+      font-weight: 600;
+    }
+    /* The orange dot under today */
+    .gantt-container .current-ball { background-color: var(--fg-dim) !important; }
     /* SVG body */
     .gantt .grid-header,
     .gantt .grid-row,
@@ -194,8 +219,13 @@
     .gantt .lower-text, .gantt .upper-text { opacity: 0.75; }
     .gantt .arrow { stroke: var(--fg-dim); }
     /* Milestone line drawn inside the SVG so it scrolls with the chart and
-       spans the full chart height naturally. */
-    .gantt-milestone-line { stroke: var(--milestone-fill); stroke-width: 2; }
+       spans the full chart height naturally. Pastel pink, dotted, behind bars. */
+    .gantt-milestone-group { opacity: 0.85; }
+    .gantt-milestone-line {
+      stroke: var(--milestone-fill);
+      stroke-width: 1.5;
+      stroke-dasharray: 4 3;
+    }
     .gantt-milestone-label {
       fill: var(--milestone-text);
       font-size: 11px;
@@ -220,6 +250,22 @@
     </div>
     <div class="group">
       <button id="toggle-milestones" class="active" title="Show / hide milestones">🚩 Milestones</button>
+    </div>
+    <div class="group">
+      <label for="filter-tt">Filter:</label>
+      <select id="filter-tt" title="Show only one task type">
+        <option value="">All task types</option>
+      </select>
+    </div>
+    <div class="group">
+      <label for="sort-by">Sort:</label>
+      <select id="sort-by" title="Row order">
+        <option value="entity">Entity name</option>
+        <option value="taskType">Task type</option>
+        <option value="start">Start date</option>
+        <option value="status">Status</option>
+        <option value="priority">Priority</option>
+      </select>
     </div>
     <div class="spacer"></div>
     <div class="status" id="status">Loading…</div>
@@ -281,6 +327,43 @@
     }
     applyTheme();
 
+    // Navigate the parent Kitsu app to the task panel.
+    // Convention: /productions/<pid>/shots/<entity_id>?selected_task_id=<task_id>
+    // (Kitsu shows a task side-panel for the selected entity when this query
+    // param is present; works for shots and assets via the same route shape.)
+    function openTask(taskId, entityId) {
+      try {
+        const pid = readProjectId();
+        if (!taskId || !pid) return;
+        // Default to the shots route; the entity might be an asset, which
+        // Kitsu also handles at /assets/<id>. We try shots first and let
+        // Kitsu's router redirect if needed.
+        const base = entityId
+          ? `/productions/${pid}/shots/${entityId}`
+          : `/productions/${pid}/all-tasks`;
+        const url = `${base}?selected_task_id=${taskId}`;
+        if (window.parent && window.parent !== window) {
+          window.parent.location.href = url;
+        } else {
+          location.href = url;
+        }
+      } catch (e) {
+        console.warn("openTask failed:", e);
+      }
+    }
+
+    // Lighten a hex colour toward white by amount (0..1) — used for pastel bar fills.
+    function lighten(hex, amount) {
+      const m = (hex || "").match(/^#?([0-9a-f]{6})$/i);
+      if (!m) return hex;
+      const h = m[1];
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const f = (c) => Math.round(c + (255 - c) * amount);
+      return `rgb(${f(r)}, ${f(g)}, ${f(b)})`;
+    }
+
     const projectId = readProjectId();
     const status = document.getElementById("status");
     const empty = document.getElementById("empty");
@@ -293,6 +376,9 @@
     let currentSource = "tasks";
     let showMilestones = true;
     let currentMilestones = [];
+    let filterTaskType = ""; // task_type_id; empty = all
+    let sortBy = "entity";    // entity | taskType | start | status | priority
+    let lastRows = [];        // cached fetched rows (for re-sort without re-fetch)
 
     if (!projectId) {
       status.textContent = "Missing project_id";
@@ -317,8 +403,63 @@
     document.getElementById("toggle-milestones").addEventListener("click", () => {
       showMilestones = !showMilestones;
       document.getElementById("toggle-milestones").classList.toggle("active", showMilestones);
-      load();
+      rerender();
     });
+    document.getElementById("filter-tt").addEventListener("change", (e) => {
+      filterTaskType = e.target.value;
+      rerender();
+    });
+    document.getElementById("sort-by").addEventListener("change", (e) => {
+      sortBy = e.target.value;
+      rerender();
+    });
+
+    function applyFilterSort(rows) {
+      let out = rows;
+      if (filterTaskType) out = out.filter((r) => r.task_type_id === filterTaskType);
+      const byEntity = (r) => (r.entity_name || "").toLowerCase();
+      const byTT = (r) => (r.task_type_name || "").toLowerCase();
+      const byStart = (r) => r.start || "9999";
+      const byStatus = (r) => (r.task_status_short_name || "").toLowerCase();
+      const byPrio = (r) => -1 * (r.priority || 0);
+      const keyFn = { entity: byEntity, taskType: byTT, start: byStart, status: byStatus, priority: byPrio }[sortBy] || byEntity;
+      return [...out].sort((a, b) => {
+        const ka = keyFn(a), kb = keyFn(b);
+        if (ka < kb) return -1;
+        if (ka > kb) return 1;
+        // Stable secondary: always entity then task type
+        return byEntity(a).localeCompare(byEntity(b)) || byTT(a).localeCompare(byTT(b));
+      });
+    }
+
+    function populateTaskTypeFilter(rows) {
+      const sel = document.getElementById("filter-tt");
+      // Preserve existing selection across reloads
+      const existing = filterTaskType;
+      const seen = new Map();
+      rows.forEach((r) => {
+        if (r.task_type_id && !seen.has(r.task_type_id)) {
+          seen.set(r.task_type_id, r.task_type_name || r.task_type_id);
+        }
+      });
+      const sorted = Array.from(seen.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+      sel.innerHTML = `<option value="">All task types</option>` +
+        sorted.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
+      sel.value = existing;
+    }
+
+    // Re-render from cached rows (no network)
+    function rerender() {
+      if (!lastRows.length) return;
+      renderGantt(applyFilterSort(lastRows), showMilestones ? currentMilestones : []);
+      updateStatus();
+    }
+
+    function updateStatus() {
+      const filtered = applyFilterSort(lastRows);
+      const ms = showMilestones ? currentMilestones.length : 0;
+      status.textContent = `${filtered.length} item${filtered.length === 1 ? "" : "s"}` + (ms ? `  ·  ${ms} milestone${ms === 1 ? "" : "s"}` : "");
+    }
 
     function switchSource(s) {
       currentSource = s;
@@ -342,9 +483,10 @@
             : Promise.resolve([]),
         ]);
         currentMilestones = milestones;
-        renderGantt(rows, milestones);
-        const ms = milestones.length;
-        status.textContent = `${rows.length} item${rows.length === 1 ? "" : "s"}` + (ms ? `  ·  ${ms} milestone${ms === 1 ? "" : "s"}` : "");
+        lastRows = rows;
+        populateTaskTypeFilter(rows);
+        renderGantt(applyFilterSort(rows), showMilestones ? milestones : []);
+        updateStatus();
       } catch (e) {
         status.textContent = `Error: ${e.message}`;
         empty.hidden = false;
@@ -384,18 +526,30 @@
           progress: r.progress ?? 0,
           custom_class: `status-${(r.task_status_short_name || "").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
           _color: r.task_status_color,
+          _entity_id: r.entity_id,
         }));
       const combined = tasks;
 
       // Inject one CSS rule per distinct task_status_color so bars are coloured.
+      // Bars keep the saturated Kitsu status colour — labels go white over them
+      // (handled in luma loop below). For the "row background" pastel tint feel
+      // Piotr asked for, we also paint a very-light wash behind each row using
+      // the row-line as a divider rather than tinting the bar itself.
       const seen = new Set();
       rows.forEach((r) => {
         const cls = `status-${(r.task_status_short_name || "").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
         if (seen.has(cls)) return;
         seen.add(cls);
         const color = r.task_status_color || "#64748b";
+        const pastel = lighten(color, 0.7);
         const style = document.createElement("style");
-        style.textContent = `.gantt .bar-wrapper.${cls} .bar { fill: ${color}; }`;
+        style.textContent =
+          `.gantt .bar-wrapper.${cls} .bar { fill: ${color}; stroke: ${color}; }\n` +
+          // "big" wrappers have the label sitting OUTSIDE the bar — render that label dim,
+          // because the page background under it is light/dark theme bg, not the bar fill.
+          `.gantt .bar-wrapper.${cls}.big .bar-label { fill: var(--fg) !important; opacity: 0.85; }\n` +
+          // Soft pastel shadow (3px offset) BEHIND the bar to suggest "pastel echo"
+          `.gantt .bar-wrapper.${cls} { filter: drop-shadow(0 2px 0 ${pastel}); }`;
         document.head.appendChild(style);
       });
 
@@ -415,11 +569,14 @@
       // Render side-panel rows in the same order frappe-gantt will draw them.
       const nameList = document.getElementById("name-list");
       nameList.innerHTML = "";
-      combined.forEach((t) => {
+      combined.forEach((t, idx) => {
         const row = document.createElement("div");
-        row.className = "name-col-row" + (t.custom_class === "milestone" ? " milestone" : "");
+        row.className = "name-col-row";
         row.textContent = t.name;
-        row.title = t.name;
+        row.title = "Open task in Kitsu";
+        row.dataset.taskId = t.id;
+        row.dataset.entityId = t._entity_id || "";
+        row.addEventListener("click", () => openTask(t.id, t._entity_id));
         nameList.appendChild(row);
       });
 
@@ -431,13 +588,22 @@
       gantt = new Gantt(mountSvg, combined, {
         view_mode: currentMode,
         date_format: "YYYY-MM-DD",
-        bar_height: 22,
+        // Row geometry — 25% lower than v0.1.7 (bar 22→16, padding 16→12, row 38→28)
+        // so cells are closer to square at Day view (column_width 32 vs row 28).
+        bar_height: 16,
         bar_corner_radius: 4,
-        padding: 16,
+        padding: 12,
         column_width: currentMode === "Month" ? 80 : currentMode === "Week" ? 56 : currentMode === "Day" ? 32 : 24,
         view_mode_padding: { "Quarter Day": "1d", "Half Day": "1d", "Day": "1d", "Week": "3d", "Month": "1w" },
         infinite_padding: false,
-        readonly: true,
+        readonly: false, // need clicks; we disable drag below via pointer-events on handles
+        popup: function (ctx) {
+          // Suppress frappe-gantt's default popup; we open the task in the parent app instead.
+          return null;
+        },
+        on_click: function (task) {
+          openTask(task.id, task._entity_id);
+        },
       });
       // Sync the name-col scroll with the chart's vertical scroll.
       const chartCol = document.getElementById("chart-col");
@@ -476,11 +642,17 @@
           const row = rows[idx];
           if (!row) return;
           const luma = lumaFromHex(row.task_status_color);
-          const labelDark = luma > 0.6;
-          wrap.querySelectorAll(".bar-label").forEach((el) => {
-            el.style.fill = labelDark ? "#111418" : "#ffffff";
-            el.style.fontWeight = "600";
-          });
+          // Threshold 0.85 — only the very-light statuses (Todo #f5f5f5, Neutral #cccccc)
+          // get a dark label. Green/blue/purple/red all stay white-on-saturated.
+          const labelDark = luma > 0.85;
+          // Labels INSIDE the bar (small/normal wrappers) — colour by bar luma
+          if (!wrap.classList.contains("big")) {
+            wrap.querySelectorAll(".bar-label").forEach((el) => {
+              el.style.fill = labelDark ? "#111418" : "#ffffff";
+              el.style.fontWeight = "600";
+            });
+          }
+          // bar-progress fill — dim on light bars, light on dark bars
           if (labelDark) {
             wrap.querySelectorAll(".bar-progress").forEach((el) => {
               el.style.fill = "rgba(0, 0, 0, 0.18)";
