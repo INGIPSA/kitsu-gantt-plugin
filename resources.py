@@ -30,6 +30,17 @@ class GanttScheduleItemsResource(Resource, ArgsMixin):
         return services.get_schedule_items_for_gantt(project_id)
 
 
+class GanttMilestonesResource(Resource, ArgsMixin):
+    """Live milestones for a project."""
+
+    @jwt_required()
+    def get(self):
+        project_id = self.get_text_parameter("project_id")
+        if not project_id:
+            return {"error": "project_id required"}, 400
+        return services.get_milestones_for_gantt(project_id)
+
+
 class GanttViewsResource(Resource, ArgsMixin):
     """Saved Gantt view configurations for a project."""
 

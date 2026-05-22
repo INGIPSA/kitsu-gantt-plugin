@@ -7,6 +7,7 @@ from zou.app.models.entity import Entity
 from zou.app.models.task_type import TaskType
 from zou.app.models.task_status import TaskStatus
 from zou.app.models.person import Person
+from zou.app.models.milestone import Milestone
 
 from .models import GanttView
 
@@ -91,6 +92,29 @@ def get_schedule_items_for_gantt(project_id):
                 else None,
                 "end": item.end_date.isoformat() if item.end_date else None,
                 "man_days": item.man_days,
+            }
+        )
+    return results
+
+
+def get_milestones_for_gantt(project_id):
+    """Return milestones of a project for the Gantt chart."""
+    rows = (
+        db.session.query(Milestone, TaskType)
+        .outerjoin(TaskType, Milestone.task_type_id == TaskType.id)
+        .filter(Milestone.project_id == project_id)
+        .all()
+    )
+    results = []
+    for m, tt in rows:
+        results.append(
+            {
+                "id": str(m.id),
+                "name": m.name,
+                "date": m.date.isoformat() if m.date else None,
+                "task_type_id": str(tt.id) if tt else None,
+                "task_type_name": tt.name if tt else None,
+                "task_type_color": tt.color if tt else None,
             }
         )
     return results

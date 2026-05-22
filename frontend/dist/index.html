@@ -69,6 +69,10 @@
     .gantt .bar-progress { fill: rgba(255, 255, 255, 0.25); }
     .gantt text { fill: #e5e7eb !important; }
     .gantt .arrow { stroke: #94a3b8; }
+    /* Milestones rendered as 1-day bars with a distinctive style */
+    .gantt .bar-wrapper.milestone .bar { fill: #ef4444; stroke: #b91c1c; stroke-width: 1.5; }
+    .gantt .bar-wrapper.milestone .bar-label { fill: #fef2f2 !important; font-weight: 600; }
+    .gantt .bar-wrapper.milestone .bar-progress { fill: transparent; }
   </style>
 </head>
 <body>
@@ -85,6 +89,9 @@
       <button id="source-tasks" class="active">Tasks</button>
       <button id="source-schedule">Schedule items</button>
     </div>
+    <div class="group">
+      <button id="toggle-milestones" class="active" title="Show / hide milestones">🚩 Milestones</button>
+    </div>
     <div class="spacer"></div>
     <div class="status" id="status">Loading…</div>
   </div>
@@ -94,8 +101,28 @@
   <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@1.0.3/dist/frappe-gantt.umd.js"></script>
   <script>
     // Minimal MVP: read project_id from query string, fetch tasks from Zou plugin API, render Gantt.
-    const params = new URLSearchParams(location.search);
-    const projectId = params.get("project_id");
+    // Kitsu embeds the plugin in a same-origin iframe under /api/plugins/gantt/frontend/
+    // and the project_id only lives in the parent URL — try both.
+    function readProjectId() {
+      // Kitsu plugin convention (since 1.0.x): production_id is passed as a query
+      // param into the iframe. We also accept project_id for direct deep-links,
+      // and fall back to the parent URL pattern /productions/<uuid>/...
+      const own = new URLSearchParams(location.search);
+      const fromOwn = own.get("production_id") || own.get("project_id");
+      if (fromOwn) return fromOwn;
+      try {
+        const p = window.parent.location;
+        const parentQ = new URLSearchParams(p.search);
+        const fromParent = parentQ.get("production_id") || parentQ.get("project_id");
+        if (fromParent) return fromParent;
+        const m = p.pathname.match(/\/productions\/([0-9a-f-]{36})/i);
+        if (m) return m[1];
+      } catch (_) {
+        // Cross-origin (shouldn't happen for same-origin Kitsu plugin; ignore)
+      }
+      return null;
+    }
+    const projectId = readProjectId();
     const status = document.getElementById("status");
     const empty = document.getElementById("empty");
     const container = document.getElementById("gantt-container");
@@ -103,6 +130,7 @@
     let gantt = null;
     let currentMode = "Day";
     let currentSource = "tasks";
+    let showMilestones = true;
 
     if (!projectId) {
       status.textContent = "Missing project_id";
@@ -123,6 +151,11 @@
 
     document.getElementById("source-tasks").addEventListener("click", () => switchSource("tasks"));
     document.getElementById("source-schedule").addEventListener("click", () => switchSource("schedule"));
+    document.getElementById("toggle-milestones").addEventListener("click", () => {
+      showMilestones = !showMilestones;
+      document.getElementById("toggle-milestones").classList.toggle("active", showMilestones);
+      load();
+    });
 
     function switchSource(s) {
       currentSource = s;
@@ -136,13 +169,18 @@
       empty.hidden = true;
       const endpoint = currentSource === "tasks" ? "tasks" : "schedule-items";
       try {
-        const res = await fetch(`/api/plugins/gantt/${endpoint}?project_id=${projectId}`, {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const rows = await res.json();
-        renderGantt(rows);
-        status.textContent = `${rows.length} item${rows.length === 1 ? "" : "s"}`;
+        const [rows, milestones] = await Promise.all([
+          fetch(`/api/plugins/gantt/${endpoint}?project_id=${projectId}`, { credentials: "include" })
+            .then((r) => { if (!r.ok) throw new Error(`tasks HTTP ${r.status}`); return r.json(); }),
+          showMilestones
+            ? fetch(`/api/plugins/gantt/milestones?project_id=${projectId}`, { credentials: "include" })
+                .then((r) => (r.ok ? r.json() : []))
+                .catch(() => [])
+            : Promise.resolve([]),
+        ]);
+        renderGantt(rows, milestones);
+        const ms = milestones.length;
+        status.textContent = `${rows.length} item${rows.length === 1 ? "" : "s"}` + (ms ? `  ·  ${ms} milestone${ms === 1 ? "" : "s"}` : "");
       } catch (e) {
         status.textContent = `Error: ${e.message}`;
         empty.hidden = false;
@@ -150,7 +188,7 @@
       }
     }
 
-    function renderGantt(rows) {
+    function renderGantt(rows, milestones = []) {
       const tasks = rows
         .filter((r) => r.start && r.end)
         .map((r) => ({
@@ -161,6 +199,19 @@
           progress: r.progress ?? 0,
           custom_class: `status-${(r.task_status_short_name || "").toLowerCase().replace(/[^a-z0-9]/g, "")}`,
         }));
+      // Milestones rendered as single-day bars at the top of the chart
+      const msTasks = milestones
+        .filter((m) => m.date)
+        .map((m) => ({
+          id: `ms-${m.id}`,
+          name: `🚩 ${m.name}` + (m.task_type_name ? `  ·  ${m.task_type_name}` : ""),
+          start: m.date.slice(0, 10),
+          end: m.date.slice(0, 10),
+          progress: 100,
+          custom_class: "milestone",
+        }));
+      // Sort milestones first so they sit at the top
+      const combined = msTasks.concat(tasks);
 
       // Inject one CSS rule per distinct task_status_color so bars are coloured.
       const seen = new Set();
@@ -175,12 +226,12 @@
       });
 
       container.innerHTML = "";
-      if (!tasks.length) {
+      if (!combined.length) {
         empty.hidden = false;
         gantt = null;
         return;
       }
-      gantt = new Gantt(container, tasks, {
+      gantt = new Gantt(container, combined, {
         view_mode: currentMode,
         date_format: "YYYY-MM-DD",
         bar_height: 22,
