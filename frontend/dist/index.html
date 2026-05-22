@@ -8,17 +8,17 @@
   <style>
     :root {
       color-scheme: light dark;
-      /* Dark theme variables (default) */
+      /* Dark theme variables (default) — graph-paper feel */
       --bg:                #0f1115;
       --bg-row:            #11141a;
       --bg-header:         #14171d;
       --fg:                #e5e7eb;
       --fg-dim:            rgba(229, 231, 235, 0.6);
-      --border:            rgba(255, 255, 255, 0.08);
-      --grid-line:         rgba(255, 255, 255, 0.04);
-      --tick-line:         rgba(255, 255, 255, 0.05);
-      --tick-thick:        rgba(255, 255, 255, 0.10);
-      --weekend-tint:      rgba(255, 255, 255, 0.025);
+      --border:            rgba(255, 255, 255, 0.12);
+      --grid-line:         rgba(255, 255, 255, 0.08);
+      --tick-line:         rgba(255, 255, 255, 0.10);
+      --tick-thick:        rgba(255, 255, 255, 0.20);
+      --weekend-tint:      rgba(255, 255, 255, 0.04);
       --today-fill:        #f59e0b;
       --milestone-fill:    #ef4444;
       --milestone-text:    #fef2f2;
@@ -28,23 +28,23 @@
       --btn-border:        rgba(255, 255, 255, 0.08);
     }
     body.theme-light {
-      --bg:                #f7f8fa;
+      --bg:                #fafbfc;
       --bg-row:            #ffffff;
       --bg-header:         #f1f3f7;
       --fg:                #1f2937;
       --fg-dim:            rgba(31, 41, 55, 0.55);
-      --border:            rgba(0, 0, 0, 0.08);
-      --grid-line:         rgba(0, 0, 0, 0.05);
-      --tick-line:         rgba(0, 0, 0, 0.06);
-      --tick-thick:        rgba(0, 0, 0, 0.12);
-      --weekend-tint:      rgba(0, 0, 0, 0.03);
+      --border:            rgba(15, 23, 42, 0.15);
+      --grid-line:         rgba(15, 23, 42, 0.10);
+      --tick-line:         rgba(15, 23, 42, 0.12);
+      --tick-thick:        rgba(15, 23, 42, 0.22);
+      --weekend-tint:      rgba(15, 23, 42, 0.05);
       --today-fill:        #f59e0b;
       --milestone-fill:    #ef4444;
       --milestone-text:    #ffffff;
       --progress-fill:     rgba(0, 0, 0, 0.18);
-      --btn-bg:            rgba(0, 0, 0, 0.05);
-      --btn-bg-hover:      rgba(0, 0, 0, 0.10);
-      --btn-border:        rgba(0, 0, 0, 0.10);
+      --btn-bg:            rgba(15, 23, 42, 0.05);
+      --btn-bg-hover:      rgba(15, 23, 42, 0.10);
+      --btn-border:        rgba(15, 23, 42, 0.10);
     }
     body {
       margin: 0;
@@ -134,8 +134,9 @@
       flex: 1;
       overflow: auto;
       position: relative;
+      scroll-behavior: smooth;
     }
-    /* Thinner, less obtrusive scrollbars (WebKit only — Firefox uses default) */
+    /* Thinner scrollbars (WebKit) */
     .chart-col::-webkit-scrollbar { width: 10px; height: 10px; }
     .chart-col::-webkit-scrollbar-track { background: transparent; }
     .chart-col::-webkit-scrollbar-thumb {
@@ -144,6 +145,8 @@
       border: 2px solid var(--bg);
     }
     .chart-col::-webkit-scrollbar-thumb:hover { background: var(--btn-border); }
+    /* Firefox */
+    .chart-col { scrollbar-width: thin; scrollbar-color: var(--btn-bg-hover) transparent; }
     #gantt-container { padding: 0; display: block; }
     #empty {
       padding: 32px;
@@ -152,6 +155,16 @@
       font-size: 13px;
     }
     /* Override frappe-gantt — frappe-gantt 1.0.3 renders the header as an HTML <div>, not SVG */
+    /* CRITICAL: frappe-gantt wraps its SVG in a <div class="gantt-container"> with
+       overflow:auto and a fixed height — which gives the chart its OWN scrollbars,
+       independent of ours. Force it to be a transparent passthrough so our
+       chart-col is the single source of truth for scroll. */
+    .gantt-container {
+      overflow: visible !important;
+      height: auto !important;
+      max-height: none !important;
+      width: auto !important;
+    }
     .gantt-container, .gantt-container .grid-header {
       background-color: var(--bg-header) !important;
       color: var(--fg);
@@ -437,11 +450,27 @@
         { passive: true }
       );
 
-      // After frappe-gantt mounts, walk bars in DOM order to:
+      // After frappe-gantt mounts:
+      //  - convert SVG width="100%" -> explicit pixel width so chart-col can
+      //    actually scroll horizontally instead of cramming everything in
       //  - flip the label colour to dark when the bar fill is light
       //  - collect calibration samples for empirical pixels-per-day
       const calibSamples = [];
       requestAnimationFrame(() => {
+        // Force explicit SVG width based on rendered content
+        const bars = mountSvg.querySelectorAll(".bar-wrapper .bar");
+        let maxRight = 0;
+        bars.forEach((b) => {
+          const x = parseFloat(b.getAttribute("x") || 0);
+          const w = parseFloat(b.getAttribute("width") || 0);
+          if (x + w > maxRight) maxRight = x + w;
+        });
+        if (maxRight > 0) {
+          const explicit = Math.max(maxRight + 80, 800);
+          mountSvg.setAttribute("width", explicit);
+          mountSvg.style.width = explicit + "px";
+          mountSvg.style.minWidth = explicit + "px";
+        }
         const wrappers = Array.from(mountSvg.querySelectorAll(".bar-wrapper"));
         wrappers.forEach((wrap, idx) => {
           const row = rows[idx];
